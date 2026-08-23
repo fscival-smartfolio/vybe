@@ -9,22 +9,32 @@ function base64UrlAUint8Array(base64Url: string) {
   return output;
 }
 
+export type RisultatoNotifiche =
+  | { ok: true }
+  | { ok: false; motivo: string };
+
 // Chiede il permesso di inviare notifiche e registra questo dispositivo.
-// Va richiamata da un'azione dell'utente (es. click su "Mi unisco"),
-// mai automaticamente al caricamento della pagina: i browser bloccano
-// le richieste di permesso non collegate a un'interazione reale.
-export async function abilitaNotifichePush() {
+// Restituisce SEMPRE un esito chiaro (mai un fallimento silenzioso),
+// così l'interfaccia può dire all'utente esattamente cosa è successo.
+export async function abilitaNotifichePush(): Promise<RisultatoNotifiche> {
   try {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (!("serviceWorker" in navigator)) {
+      return { ok: false, motivo: "Questo browser non supporta i service worker." };
+    }
+
+    if (!("PushManager" in window)) {
+      return { ok: false, motivo: "Questo browser non supporta le notifiche push (comune nei browser interni di app come Instagram/Facebook: apri il sito da Chrome o Safari veri)." };
+    }
 
     const chiavePubblica = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!chiavePubblica) {
-      console.warn("NEXT_PUBLIC_VAPID_PUBLIC_KEY non impostata, notifiche push disattivate.");
-      return;
+      return { ok: false, motivo: "Configurazione mancante lato server (chiave VAPID non impostata)." };
     }
 
     const permesso = await Notification.requestPermission();
-    if (permesso !== "granted") return;
+    if (permesso !== "granted") {
+      return { ok: false, motivo: `Permesso non concesso (stato: ${permesso}).` };
+    }
 
     const registrazione = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
@@ -39,17 +49,23 @@ export async function abilitaNotifichePush() {
     }
 
     const dati = iscrizione.toJSON();
-    if (!dati.endpoint || !dati.keys?.p256dh || !dati.keys?.auth) return;
+    if (!dati.endpoint || !dati.keys?.p256dh || !dati.keys?.auth) {
+      return { ok: false, motivo: "L'iscrizione push non ha restituito i dati necessari." };
+    }
 
     const supabase = createClient();
-    await supabase.rpc("salva_push_subscription", {
+    const { error } = await supabase.rpc("salva_push_subscription", {
       p_endpoint: dati.endpoint,
       p_p256dh: dati.keys.p256dh,
       p_auth: dati.keys.auth,
     });
-  } catch (err) {
-    // Non blocchiamo mai il flusso principale (iscrizione/creazione attività)
-    // se le notifiche push falliscono per qualsiasi motivo.
-    console.warn("Notifiche push non attivate:", err);
+
+    if (error) {
+      return { ok: false, motivo: `Errore nel salvataggio: ${error.message}` };
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, motivo: err?.message || "Errore sconosciuto." };
   }
 }

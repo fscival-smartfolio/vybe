@@ -683,29 +683,15 @@ export default function Home() {
   }
 
   async function attivaNotifichePulsante() {
-    setMessaggioNotifiche("");
+    setMessaggioNotifiche("Attivo...");
 
-    if (!("Notification" in window)) {
-      setMessaggioNotifiche("Questo browser non supporta le notifiche.");
-      return;
-    }
+    const risultato = await abilitaNotifichePush();
 
-    if (Notification.permission === "denied") {
-      setMessaggioNotifiche(
-        "Le notifiche sono bloccate nelle impostazioni del browser per questo sito. Vanno riattivate da lì."
-      );
-      return;
-    }
-
-    await abilitaNotifichePush();
-
-    if (Notification.permission === "granted") {
+    if (risultato.ok) {
       setMessaggioNotifiche("🔔 Notifiche attivate su questo dispositivo!");
     } else {
-      setMessaggioNotifiche("Permesso non concesso: riprova e accetta la richiesta del browser.");
+      setMessaggioNotifiche(`⚠️ ${risultato.motivo}`);
     }
-
-    setTimeout(() => setMessaggioNotifiche(""), 5000);
   }
 
   async function apriAmici() {
