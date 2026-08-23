@@ -599,10 +599,16 @@ export default function Home() {
       // Avvisa subito chi ha la stessa passione ed è vicino. Non deve
       // mai bloccare la pubblicazione se fallisce per qualsiasi motivo.
       const nuovaAttivita = attivitaCreata as { id: string } | null;
+      console.log("DIAGNOSTICA — attività creata dal server:", nuovaAttivita);
+
       if (nuovaAttivita?.id) {
+        console.log("DIAGNOSTICA — chiamo notifica-match-passione per id:", nuovaAttivita.id);
         supabase.functions
           .invoke("notifica-match-passione", { body: { attivita_id: nuovaAttivita.id } })
+          .then((risposta) => console.log("DIAGNOSTICA — risposta notifica-match-passione:", risposta))
           .catch((err) => console.warn("Notifica match non inviata:", err));
+      } else {
+        console.warn("DIAGNOSTICA — nessun id ricevuto da crea_attivita, notifica NON inviata.");
       }
 
       await trovaAttivitaVicino();
