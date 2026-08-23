@@ -175,6 +175,7 @@ export default function Home() {
   const [amiciAperti, setAmiciAperti] = useState(false);
   const [listaAmici, setListaAmici] = useState<Amico[]>([]);
   const [caricandoAmici, setCaricandoAmici] = useState(false);
+  const [messaggioNotifiche, setMessaggioNotifiche] = useState("");
   const [partecipantiModale, setPartecipantiModale] = useState<Partecipante[]>([]);
   const [caricandoPartecipanti, setCaricandoPartecipanti] = useState(false);
 
@@ -681,6 +682,32 @@ export default function Home() {
     }
   }
 
+  async function attivaNotifichePulsante() {
+    setMessaggioNotifiche("");
+
+    if (!("Notification" in window)) {
+      setMessaggioNotifiche("Questo browser non supporta le notifiche.");
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      setMessaggioNotifiche(
+        "Le notifiche sono bloccate nelle impostazioni del browser per questo sito. Vanno riattivate da lì."
+      );
+      return;
+    }
+
+    await abilitaNotifichePush();
+
+    if (Notification.permission === "granted") {
+      setMessaggioNotifiche("🔔 Notifiche attivate su questo dispositivo!");
+    } else {
+      setMessaggioNotifiche("Permesso non concesso: riprova e accetta la richiesta del browser.");
+    }
+
+    setTimeout(() => setMessaggioNotifiche(""), 5000);
+  }
+
   async function apriAmici() {
     if (!utente) {
       window.location.href = "/accesso";
@@ -1027,12 +1054,23 @@ export default function Home() {
                 </button>
 
                 <button
+                  onClick={attivaNotifichePulsante}
+                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  🔔 Attiva notifiche
+                </button>
+
+                <button
                   onClick={() => setMostraCategorieRicerca((s) => !s)}
                   className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                 >
                   {t("perPassione")}
                 </button>
               </div>
+
+              {messaggioNotifiche && (
+                <p className="mb-2 mt-2 text-xs font-bold text-teal-700">{messaggioNotifiche}</p>
+              )}
 
               {mostraCategorieRicerca && (
                 <div className="mb-2 mt-3 flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3">
