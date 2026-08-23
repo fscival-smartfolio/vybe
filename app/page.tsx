@@ -54,6 +54,8 @@ function coloreScore(punteggio: number | null) {
   return "bg-rose-100 text-rose-700";
 }
 
+type Amico = Partecipante & { numero_attivita_aperte: number };
+
 type Posizione = { lat: number; lon: number };
 
 const PAGINA_SIZE = 20;
@@ -166,6 +168,13 @@ export default function Home() {
 
   const [oraCorrente, setOraCorrente] = useState(() => new Date());
   const [modaleAttivitaId, setModaleAttivitaId] = useState<string | null>(null);
+  const [ricercaPersoneAperta, setRicercaPersoneAperta] = useState(false);
+  const [queryPersone, setQueryPersone] = useState("");
+  const [risultatiPersone, setRisultatiPersone] = useState<Partecipante[]>([]);
+  const [cercandoPersone, setCercandoPersone] = useState(false);
+  const [amiciAperti, setAmiciAperti] = useState(false);
+  const [listaAmici, setListaAmici] = useState<Amico[]>([]);
+  const [caricandoAmici, setCaricandoAmici] = useState(false);
   const [partecipantiModale, setPartecipantiModale] = useState<Partecipante[]>([]);
   const [caricandoPartecipanti, setCaricandoPartecipanti] = useState(false);
 
@@ -666,6 +675,69 @@ export default function Home() {
     }
   }
 
+  async function apriAmici() {
+    if (!utente) {
+      window.location.href = "/accesso";
+      return;
+    }
+
+    setAmiciAperti(true);
+    setCaricandoAmici(true);
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("chi_seguo");
+      if (error) throw error;
+      setListaAmici((data || []) as Amico[]);
+    } catch (err) {
+      console.error("ERRORE LISTA AMICI:", err);
+    } finally {
+      setCaricandoAmici(false);
+    }
+  }
+
+  async function vediAttivitaDi(amico: Amico) {
+    setErroreAttivita("");
+
+    try {
+      const { lat, lon } = await ottieniPosizione();
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc("attivita_di_utente", {
+        p_creatore_id: amico.utente_id,
+        lat,
+        lon,
+      });
+
+      if (error) throw error;
+
+      const risultati = (data || []) as Attivita[];
+      setAttivita(risultati);
+      setModalitaCorrente(null);
+      setFiltroCategoria(null);
+      setFineRisultati(true);
+      setAmiciAperti(false);
+
+      if (risultati.length === 0) {
+        setErroreAttivita(
+          `${amico.nome || "Questa persona"} non ha attività aperte al momento.`
+        );
+      } else if (utente) {
+        const ids = risultati.map((r) => r.id);
+        const { data: mie } = await supabase
+          .from("partecipazioni")
+          .select("attivita_id")
+          .eq("utente_id", utente.id)
+          .in("attivita_id", ids);
+
+        setIscrittoA(new Set((mie || []).map((r: any) => r.attivita_id)));
+      }
+    } catch (err: any) {
+      console.error("ERRORE ATTIVITÀ DI UTENTE:", err);
+      setErroreAttivita(err?.message || "Non è stato possibile caricare le sue attività.");
+    }
+  }
+
   async function alternaSegui(partecipanteId: string, seguoGia: boolean) {
     try {
       const supabase = createClient();
@@ -678,13 +750,48 @@ export default function Home() {
         if (error) throw error;
       }
 
-      setPartecipantiModale((prev) =>
-        prev.map((p) => (p.utente_id === partecipanteId ? { ...p, lo_seguo: !seguoGia } : p))
-      );
+      const aggiorna = (prev: Partecipante[]) =>
+        prev.map((p) => (p.utente_id === partecipanteId ? { ...p, lo_seguo: !seguoGia } : p));
+
+      setPartecipantiModale(aggiorna);
+      setRisultatiPersone(aggiorna);
     } catch (err: any) {
       console.error("ERRORE SEGUI:", err);
       alert(err?.message || "Operazione non riuscita.");
     }
+  }
+
+  async function cercaPersone(query: string) {
+    setQueryPersone(query);
+
+    if (query.trim().length < 2) {
+      setRisultatiPersone([]);
+      return;
+    }
+
+    setCercandoPersone(true);
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("cerca_utenti", { p_query: query.trim() });
+
+      if (error) throw error;
+      setRisultatiPersone((data || []) as Partecipante[]);
+    } catch (err) {
+      console.error("ERRORE RICERCA PERSONE:", err);
+    } finally {
+      setCercandoPersone(false);
+    }
+  }
+
+  function apriRicercaPersone() {
+    if (!utente) {
+      window.location.href = "/accesso";
+      return;
+    }
+    setQueryPersone("");
+    setRisultatiPersone([]);
+    setRicercaPersoneAperta(true);
   }
 
   async function apriPartecipanti(attivitaId: string) {
@@ -900,11 +1007,17 @@ export default function Home() {
                 </button>
 
                 <button
-                  onClick={() => trovaAttivitaSeguiti(true)}
-                  disabled={ricercaSeguiti}
-                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={apriAmici}
+                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                 >
-                  {ricercaSeguiti ? "👥 ..." : t("persoeSegui")}
+                  {t("persoeSegui")}
+                </button>
+
+                <button
+                  onClick={apriRicercaPersone}
+                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  🔍 Trova amici
                 </button>
 
                 <button
@@ -1442,6 +1555,153 @@ export default function Home() {
             >
               {pubblicando ? "Pubblico..." : "🚀 Pubblica attività"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE ELENCO AMICI */}
+      {amiciAperti && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => setAmiciAperti(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900">👥 Persone che segui</h3>
+              <button
+                onClick={() => setAmiciAperti(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            {caricandoAmici ? (
+              <p className="text-sm text-slate-400">Carico...</p>
+            ) : listaAmici.length === 0 ? (
+              <div className="text-center">
+                <p className="mb-4 text-sm text-slate-500">
+                  Non segui ancora nessuno. Cerca qualcuno da seguire!
+                </p>
+                <button
+                  onClick={() => {
+                    setAmiciAperti(false);
+                    apriRicercaPersone();
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-indigo-600 to-teal-500 px-5 py-2.5 text-sm font-black text-white"
+                >
+                  🔍 Trova amici
+                </button>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {listaAmici.map((a) => (
+                  <li key={a.utente_id}>
+                    <button
+                      onClick={() => vediAttivitaDi(a)}
+                      className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition hover:bg-slate-50"
+                    >
+                      {a.avatar_url ? (
+                        <img src={a.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-teal-500 text-sm font-black text-white">
+                          {(a.nome?.[0] || "?").toUpperCase()}
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-slate-900">
+                          {[a.nome, a.cognome].filter(Boolean).join(" ") || "Utente Vybe"}
+                        </p>
+                        {a.citta && <p className="text-xs text-slate-500">{a.citta}</p>}
+                      </div>
+
+                      {a.numero_attivita_aperte > 0 ? (
+                        <span className="shrink-0 rounded-full bg-teal-100 px-2.5 py-1 text-[11px] font-black text-teal-700">
+                          🟢 {a.numero_attivita_aperte} attiv.
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[11px] font-medium text-slate-400">
+                          Niente al momento
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODALE RICERCA PERSONE */}
+      {ricercaPersoneAperta && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => setRicercaPersoneAperta(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900">🔍 Trova amici</h3>
+              <button
+                onClick={() => setRicercaPersoneAperta(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <input
+              value={queryPersone}
+              onChange={(e) => cercaPersone(e.target.value)}
+              placeholder="Cerca per nome o cognome..."
+              autoFocus
+              className="mb-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+
+            {cercandoPersone && <p className="text-sm text-slate-400">Cerco...</p>}
+
+            {!cercandoPersone && queryPersone.trim().length >= 2 && risultatiPersone.length === 0 && (
+              <p className="text-sm text-slate-400">Nessuna persona trovata con questo nome.</p>
+            )}
+
+            <ul className="space-y-3">
+              {risultatiPersone.map((p) => (
+                <li key={p.utente_id} className="flex items-center gap-3">
+                  {p.avatar_url ? (
+                    <img src={p.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-teal-500 text-sm font-black text-white">
+                      {(p.nome?.[0] || "?").toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {[p.nome, p.cognome].filter(Boolean).join(" ") || "Utente Vybe"}
+                    </p>
+                    {p.citta && <p className="text-xs text-slate-500">{p.citta}</p>}
+                  </div>
+
+                  <button
+                    onClick={() => alternaSegui(p.utente_id, p.lo_seguo)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${
+                      p.lo_seguo
+                        ? "border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600"
+                        : "bg-gradient-to-r from-indigo-600 to-teal-500 text-white"
+                    }`}
+                  >
+                    {p.lo_seguo ? "✓ Segui già" : "+ Segui"}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
