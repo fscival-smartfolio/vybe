@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import RegistraVisita from "./components/RegistraVisita";
 import InstallPrompt from "./components/InstallPrompt";
-import { abilitaNotifichePush } from "@/lib/push";
+import { abilitaNotifichePush, disabilitaNotifichePush, statoNotifichePush } from "@/lib/push";
 import { useLingua } from "./components/LinguaProvider";
 import SelettoreLingua from "./components/SelettoreLingua";
 
@@ -37,6 +37,8 @@ type Passione = {
   icona: string | null;
 };
 
+type StatoFollow = "nessuno" | "in_attesa" | "accettata";
+
 type Partecipante = {
   utente_id: string;
   nome: string | null;
@@ -44,7 +46,17 @@ type Partecipante = {
   avatar_url: string | null;
   citta: string | null;
   punteggio_affidabilita: number | null;
-  lo_seguo: boolean;
+  stato_follow: StatoFollow;
+};
+
+type RichiestaAmicizia = {
+  utente_id: string;
+  nome: string | null;
+  cognome: string | null;
+  avatar_url: string | null;
+  citta: string | null;
+  punteggio_affidabilita: number | null;
+  richiesto_il: string;
 };
 
 function coloreScore(punteggio: number | null) {
@@ -173,6 +185,12 @@ export default function Home() {
   const [risultatiPersone, setRisultatiPersone] = useState<Partecipante[]>([]);
   const [cercandoPersone, setCercandoPersone] = useState(false);
   const [amiciAperti, setAmiciAperti] = useState(false);
+  const [richiesteAperte, setRichiesteAperte] = useState(false);
+  const [listaRichieste, setListaRichieste] = useState<RichiestaAmicizia[]>([]);
+  const [caricandoRichieste, setCaricandoRichieste] = useState(false);
+  const [numeroRichieste, setNumeroRichieste] = useState(0);
+  const [notificheAttive, setNotificheAttive] = useState(false);
+  const [attivandoNotifiche, setAttivandoNotifiche] = useState(false);
   const [listaAmici, setListaAmici] = useState<Amico[]>([]);
   const [caricandoAmici, setCaricandoAmici] = useState(false);
   const [messaggioNotifiche, setMessaggioNotifiche] = useState("");
@@ -256,11 +274,23 @@ export default function Home() {
 
       if (session?.user) {
         await caricaUtente(session.user.id);
+
+        statoNotifichePush().then(setNotificheAttive);
+
+        supabase
+          .rpc("numero_richieste_in_attesa")
+          .then((risposta: { data: number | null }) => setNumeroRichieste(risposta.data || 0));
       } else {
         setUtente(null);
       }
 
       setCaricamento(false);
+
+      // Carichiamo subito il feed, senza aspettare che l'utente prema
+      // un pulsante: la home deve mostrare attività fin da subito.
+      if (session?.user) {
+        trovaAttivitaVicino(true);
+      }
     }
 
     inizializza();
@@ -683,15 +713,25 @@ export default function Home() {
   }
 
   async function attivaNotifichePulsante() {
-    setMessaggioNotifiche("Attivo...");
+    setAttivandoNotifiche(true);
+    setMessaggioNotifiche(notificheAttive ? "Disattivo..." : "Attivo...");
 
-    const risultato = await abilitaNotifichePush();
-
-    if (risultato.ok) {
-      setMessaggioNotifiche("🔔 Notifiche attivate su questo dispositivo!");
+    if (notificheAttive) {
+      const risultato = await disabilitaNotifichePush();
+      setNotificheAttive(false);
+      setMessaggioNotifiche(risultato.ok ? "🔕 Notifiche disattivate su questo dispositivo." : `⚠️ ${risultato.motivo}`);
     } else {
-      setMessaggioNotifiche(`⚠️ ${risultato.motivo}`);
+      const risultato = await abilitaNotifichePush();
+
+      if (risultato.ok) {
+        setNotificheAttive(true);
+        setMessaggioNotifiche("🔔 Notifiche attivate su questo dispositivo!");
+      } else {
+        setMessaggioNotifiche(`⚠️ ${risultato.motivo}`);
+      }
     }
+
+    setAttivandoNotifiche(false);
   }
 
   async function apriAmici() {
@@ -757,25 +797,87 @@ export default function Home() {
     }
   }
 
-  async function alternaSegui(partecipanteId: string, seguoGia: boolean) {
+  async function alternaSegui(partecipanteId: string, statoAttuale: StatoFollow) {
     try {
       const supabase = createClient();
 
-      if (seguoGia) {
-        const { error } = await supabase.rpc("smetti_di_seguire", { p_utente_id: partecipanteId });
-        if (error) throw error;
-      } else {
+      if (statoAttuale === "nessuno") {
         const { error } = await supabase.rpc("segui_utente", { p_utente_id: partecipanteId });
         if (error) throw error;
+
+        if (utente) {
+          supabase.functions
+            .invoke("notifica-richiesta-follow", {
+              body: { richiedente_id: utente.id, destinatario_id: partecipanteId },
+            })
+            .catch((err) => console.warn("Notifica richiesta non inviata:", err));
+        }
+
+        aggiornaStatoFollow(partecipanteId, "in_attesa");
+      } else {
+        const { error } = await supabase.rpc("smetti_di_seguire", { p_utente_id: partecipanteId });
+        if (error) throw error;
+
+        aggiornaStatoFollow(partecipanteId, "nessuno");
       }
-
-      const aggiorna = (prev: Partecipante[]) =>
-        prev.map((p) => (p.utente_id === partecipanteId ? { ...p, lo_seguo: !seguoGia } : p));
-
-      setPartecipantiModale(aggiorna);
-      setRisultatiPersone(aggiorna);
     } catch (err: any) {
       console.error("ERRORE SEGUI:", err);
+      alert(err?.message || "Operazione non riuscita.");
+    }
+  }
+
+  function aggiornaStatoFollow(utenteId: string, nuovoStato: StatoFollow) {
+    const aggiorna = (prev: Partecipante[]) =>
+      prev.map((p) => (p.utente_id === utenteId ? { ...p, stato_follow: nuovoStato } : p));
+
+    setPartecipantiModale(aggiorna);
+    setRisultatiPersone(aggiorna);
+  }
+
+  function etichettaFollow(stato: StatoFollow) {
+    if (stato === "accettata") return "✓ Amici";
+    if (stato === "in_attesa") return "⏳ Richiesta inviata";
+    return "+ Segui";
+  }
+
+  function classeFollow(stato: StatoFollow) {
+    if (stato === "accettata")
+      return "border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600";
+    if (stato === "in_attesa")
+      return "border border-amber-200 bg-amber-50 text-amber-700 hover:border-rose-200 hover:text-rose-600";
+    return "bg-gradient-to-r from-indigo-600 to-teal-500 text-white";
+  }
+
+  async function apriRichiesteAmicizia() {
+    if (!utente) return;
+
+    setRichiesteAperte(true);
+    setCaricandoRichieste(true);
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("richieste_in_attesa");
+      if (error) throw error;
+      setListaRichieste((data || []) as RichiestaAmicizia[]);
+    } catch (err) {
+      console.error("ERRORE RICHIESTE:", err);
+    } finally {
+      setCaricandoRichieste(false);
+    }
+  }
+
+  async function rispondiRichiesta(richiedenteId: string, accetta: boolean) {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc(accetta ? "accetta_richiesta" : "rifiuta_richiesta", {
+        p_richiedente_id: richiedenteId,
+      });
+      if (error) throw error;
+
+      setListaRichieste((prev) => prev.filter((r) => r.utente_id !== richiedenteId));
+      setNumeroRichieste((prev) => Math.max(0, prev - 1));
+    } catch (err: any) {
+      console.error("ERRORE RISPOSTA RICHIESTA:", err);
       alert(err?.message || "Operazione non riuscita.");
     }
   }
@@ -886,6 +988,18 @@ export default function Home() {
                   <span className="hidden text-sm font-bold text-slate-500 sm:block">
                     Ciao, {utente.nome || "su Vybe"}!
                   </span>
+
+                  {numeroRichieste > 0 && (
+                    <button
+                      onClick={apriRichiesteAmicizia}
+                      className="relative rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                    >
+                      📥
+                      <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white">
+                        {numeroRichieste}
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     onClick={invitaAmici}
@@ -1078,31 +1192,6 @@ export default function Home() {
                   ))}
                 </div>
               )}
-
-              <div className="mt-5 border-t border-slate-100 pt-5">
-                <p className="mb-3 text-xs font-black uppercase tracking-wide text-slate-400">
-                  {t("oppurePubblica")}
-                </p>
-
-                <div className="flex flex-wrap gap-2">
-                  {passioni.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => apriCreazione(p.nome)}
-                      className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-gradient-to-r hover:from-indigo-600 hover:to-teal-500 hover:text-white"
-                    >
-                      {p.icona} {p.nome}
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={() => apriCreazione(undefined, true)}
-                    className="rounded-full border-2 border-dashed border-slate-300 px-4 py-2 text-sm font-bold text-slate-500 transition hover:border-indigo-400 hover:text-indigo-600"
-                  >
-                    {t("altro")}
-                  </button>
-                </div>
-              </div>
             </section>
           )}
 
@@ -1589,6 +1678,70 @@ export default function Home() {
         </div>
       )}
 
+      {/* MODALE RICHIESTE DI AMICIZIA */}
+      {richiesteAperte && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => setRichiesteAperte(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900">📥 Richieste di amicizia</h3>
+              <button
+                onClick={() => setRichiesteAperte(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            {caricandoRichieste ? (
+              <p className="text-sm text-slate-400">Carico...</p>
+            ) : listaRichieste.length === 0 ? (
+              <p className="text-sm text-slate-400">Nessuna richiesta in attesa.</p>
+            ) : (
+              <ul className="space-y-3">
+                {listaRichieste.map((r) => (
+                  <li key={r.utente_id} className="flex items-center gap-3">
+                    {r.avatar_url ? (
+                      <img src={r.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-teal-500 text-sm font-black text-white">
+                        {(r.nome?.[0] || "?").toUpperCase()}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-900">
+                        {[r.nome, r.cognome].filter(Boolean).join(" ") || "Utente Vybe"}
+                      </p>
+                      {r.citta && <p className="text-xs text-slate-500">{r.citta}</p>}
+                    </div>
+
+                    <button
+                      onClick={() => rispondiRichiesta(r.utente_id, true)}
+                      className="shrink-0 rounded-full bg-gradient-to-r from-indigo-600 to-teal-500 px-3 py-1.5 text-xs font-black text-white"
+                    >
+                      ✓ Accetta
+                    </button>
+
+                    <button
+                      onClick={() => rispondiRichiesta(r.utente_id, false)}
+                      className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-500 hover:border-rose-200 hover:text-rose-600"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODALE ELENCO AMICI */}
       {amiciAperti && (
         <div
@@ -1720,14 +1873,10 @@ export default function Home() {
                   </div>
 
                   <button
-                    onClick={() => alternaSegui(p.utente_id, p.lo_seguo)}
-                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${
-                      p.lo_seguo
-                        ? "border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600"
-                        : "bg-gradient-to-r from-indigo-600 to-teal-500 text-white"
-                    }`}
+                    onClick={() => alternaSegui(p.utente_id, p.stato_follow)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${classeFollow(p.stato_follow)}`}
                   >
-                    {p.lo_seguo ? "✓ Segui già" : "+ Segui"}
+                    {etichettaFollow(p.stato_follow)}
                   </button>
                 </li>
               ))}
@@ -1788,14 +1937,10 @@ export default function Home() {
 
                     {p.utente_id !== utente?.id && (
                       <button
-                        onClick={() => alternaSegui(p.utente_id, p.lo_seguo)}
-                        className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${
-                          p.lo_seguo
-                            ? "border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600"
-                            : "bg-gradient-to-r from-indigo-600 to-teal-500 text-white"
-                        }`}
+                        onClick={() => alternaSegui(p.utente_id, p.stato_follow)}
+                        className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black transition ${classeFollow(p.stato_follow)}`}
                       >
-                        {p.lo_seguo ? "✓ Segui già" : "+ Segui"}
+                        {etichettaFollow(p.stato_follow)}
                       </button>
                     )}
                   </li>

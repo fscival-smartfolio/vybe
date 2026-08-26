@@ -69,3 +69,44 @@ export async function abilitaNotifichePush(): Promise<RisultatoNotifiche> {
     return { ok: false, motivo: err?.message || "Errore sconosciuto." };
   }
 }
+
+// Disattiva le notifiche su questo dispositivo: annulla l'iscrizione nel
+// browser e rimuove il dispositivo dall'elenco di quelli da avvisare.
+export async function disabilitaNotifichePush(): Promise<RisultatoNotifiche> {
+  try {
+    if (!("serviceWorker" in navigator)) {
+      return { ok: false, motivo: "Questo browser non supporta i service worker." };
+    }
+
+    const registrazione = await navigator.serviceWorker.getRegistration();
+    const iscrizione = await registrazione?.pushManager.getSubscription();
+
+    if (iscrizione) {
+      const endpoint = iscrizione.endpoint;
+      await iscrizione.unsubscribe();
+
+      const supabase = createClient();
+      const { error } = await supabase.rpc("rimuovi_push_subscription", { p_endpoint: endpoint });
+      if (error) return { ok: false, motivo: error.message };
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, motivo: err?.message || "Errore sconosciuto." };
+  }
+}
+
+// Dice se questo dispositivo ha già un'iscrizione attiva alle notifiche,
+// per mostrare "Attiva" o "Disattiva" nel pulsante giusto fin da subito.
+export async function statoNotifichePush(): Promise<boolean> {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+    if (Notification.permission !== "granted") return false;
+
+    const registrazione = await navigator.serviceWorker.getRegistration();
+    const iscrizione = await registrazione?.pushManager.getSubscription();
+    return !!iscrizione;
+  } catch {
+    return false;
+  }
+}
