@@ -285,12 +285,6 @@ export default function Home() {
       }
 
       setCaricamento(false);
-
-      // Carichiamo subito il feed, senza aspettare che l'utente prema
-      // un pulsante: la home deve mostrare attività fin da subito.
-      if (session?.user) {
-        trovaAttivitaVicino(true);
-      }
     }
 
     inizializza();
@@ -314,6 +308,19 @@ export default function Home() {
     const id = setInterval(() => setOraCorrente(new Date()), 30000);
     return () => clearInterval(id);
   }, []);
+
+  const feedGiaCaricatoAutomaticamente = useRef(false);
+
+  useEffect(() => {
+    // Carichiamo il feed in automatico una sola volta, appena "utente"
+    // risulta davvero valorizzato (non nella stessa esecuzione in cui
+    // viene impostato: qui React garantisce che il valore sia quello
+    // vero, evitando il bug del redirect al login).
+    if (utente && !feedGiaCaricatoAutomaticamente.current) {
+      feedGiaCaricatoAutomaticamente.current = true;
+      trovaAttivitaVicino(true);
+    }
+  }, [utente]);
 
   async function logout() {
     const supabase = createClient();
