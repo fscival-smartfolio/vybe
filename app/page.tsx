@@ -205,7 +205,12 @@ export default function Home() {
   const [nomeCategoriaCustom, setNomeCategoriaCustom] = useState("");
   const [iconaCategoriaCustom, setIconaCategoriaCustom] = useState("✨");
 
-  const EMOJI_CUSTOM = ["✨", "🛍️", "🎨", "📚", "🐾", "🌿", "🧘", "🎓", "🛠️", "🎲", "🍺", "🎤"];
+  const EMOJI_CUSTOM = [
+    "✨", "☕", "🍕", "🍺", "🍷", "🍔", "🥗", "🍰",
+    "🛍️", "🎨", "📚", "🎬", "🎮", "🎲", "🎤", "🎵",
+    "🐾", "🌿", "🏕️", "🚴", "🏊", "🧗", "⛷️", "🎣",
+    "🧘", "🏋️", "🎓", "🛠️", "🚗", "✈️", "📷", "💻",
+  ];
   const [titoloForm, setTitoloForm] = useState("");
   const [descrizioneForm, setDescrizioneForm] = useState("");
   const [luogoForm, setLuogoForm] = useState("");
@@ -1162,9 +1167,14 @@ export default function Home() {
 
                 <button
                   onClick={attivaNotifichePulsante}
-                  className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                  disabled={attivandoNotifiche}
+                  className={`rounded-full border px-5 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    notificheAttive
+                      ? "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100"
+                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
                 >
-                  🔔 Attiva notifiche
+                  {notificheAttive ? "🔕 Disattiva notifiche" : "🔔 Attiva notifiche"}
                 </button>
 
                 <button
