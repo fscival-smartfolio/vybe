@@ -628,7 +628,7 @@ export default function Home() {
           categoria: categoriaFinale || null,
           luogo: luogoForm.trim() || null,
           data_ora: quandoForm ? new Date(quandoForm).toISOString() : null,
-          max_partecipanti: nessunLimite ? null : maxPartecipantiForm,
+          max_partecipanti: nessunLimite ? null : maxPartecipantiForm + 1,
           lat,
           lon,
         })
@@ -717,6 +717,14 @@ export default function Home() {
         );
 
         abilitaNotifichePush();
+
+        if (utente) {
+          supabase.functions
+            .invoke("notifica-nuovo-partecipante", {
+              body: { attivita_id: a.id, nuovo_utente_id: utente.id },
+            })
+            .catch((err) => console.warn("Notifica nuovo partecipante non inviata:", err));
+        }
       }
     } catch (err: any) {
       console.error("ERRORE PARTECIPAZIONE:", err);
@@ -1657,7 +1665,7 @@ export default function Home() {
 
             {/* Partecipanti */}
             <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
-              Numero massimo di partecipanti
+              Quante persone ti servono, oltre a te?
             </label>
             <div className="mb-2 flex items-center gap-3">
               <input
