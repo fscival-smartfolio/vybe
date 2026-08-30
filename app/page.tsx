@@ -1029,6 +1029,13 @@ export default function Home() {
                   </button>
 
                   <Link
+                    href="/ricordi"
+                    className="hidden rounded-full border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 sm:inline-flex"
+                  >
+                    📸 Ricordi
+                  </Link>
+
+                  <Link
                     href="/archivio"
                     className="hidden rounded-full border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 sm:inline-flex"
                   >
