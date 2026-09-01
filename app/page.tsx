@@ -719,209 +719,6 @@ export default function Home() {
     }
   }
 
-  async function attivaNotifichePulsante() {
-    setAttivandoNotifiche(true);
-    setMessaggioNotifiche(notificheAttive ? "Disattivo..." : "Attivo...");
-
-    if (notificheAttive) {
-      const risultato = await disabilitaNotifichePush();
-      setNotificheAttive(false);
-      setMessaggioNotifiche(risultato.ok ? "🔕 Notifiche disattivate su questo dispositivo." : `⚠️ ${risultato.motivo}`);
-    } else {
-      const risultato = await abilitaNotifichePush();
-
-      if (risultato.ok) {
-        setNotificheAttive(true);
-        setMessaggioNotifiche("🔔 Notifiche attivate su questo dispositivo!");
-      } else {
-        setMessaggioNotifiche(`⚠️ ${risultato.motivo}`);
-      }
-    }
-
-    setAttivandoNotifiche(false);
-  }
-
-  async function apriAmici() {
-    if (!utente) {
-      window.location.href = "/accesso";
-      return;
-    }
-
-    setAmiciAperti(true);
-    setCaricandoAmici(true);
-
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc("chi_seguo");
-      if (error) throw error;
-      setListaAmici((data || []) as Amico[]);
-    } catch (err) {
-      console.error("ERRORE LISTA AMICI:", err);
-    } finally {
-      setCaricandoAmici(false);
-    }
-  }
-
-  async function vediAttivitaDi(amico: Amico) {
-    setErroreAttivita("");
-
-    try {
-      const { lat, lon } = await ottieniPosizione();
-      const supabase = createClient();
-
-      const { data, error } = await supabase.rpc("attivita_di_utente", {
-        p_creatore_id: amico.utente_id,
-        lat,
-        lon,
-      });
-
-      if (error) throw error;
-
-      const risultati = (data || []) as Attivita[];
-      setAttivita(risultati);
-      setModalitaCorrente(null);
-      setFiltroCategoria(null);
-      setFineRisultati(true);
-      setAmiciAperti(false);
-
-      if (risultati.length === 0) {
-        setErroreAttivita(
-          `${amico.nome || "Questa persona"} non ha attività aperte al momento.`
-        );
-      } else if (utente) {
-        const ids = risultati.map((r) => r.id);
-        const { data: mie } = await supabase
-          .from("partecipazioni")
-          .select("attivita_id")
-          .eq("utente_id", utente.id)
-          .in("attivita_id", ids);
-
-        setIscrittoA(new Set((mie || []).map((r: any) => r.attivita_id)));
-      }
-    } catch (err: any) {
-      console.error("ERRORE ATTIVITÀ DI UTENTE:", err);
-      setErroreAttivita(err?.message || "Non è stato possibile caricare le sue attività.");
-    }
-  }
-
-  async function alternaSegui(partecipanteId: string, statoAttuale: StatoFollow) {
-    try {
-      const supabase = createClient();
-
-      if (statoAttuale === "nessuno") {
-        const { error } = await supabase.rpc("segui_utente", { p_utente_id: partecipanteId });
-        if (error) throw error;
-
-        if (utente) {
-          supabase.functions
-            .invoke("notifica-richiesta-follow", {
-              body: { richiedente_id: utente.id, destinatario_id: partecipanteId },
-            })
-            .catch((err) => console.warn("Notifica richiesta non inviata:", err));
-        }
-
-        aggiornaStatoFollow(partecipanteId, "in_attesa");
-      } else {
-        const { error } = await supabase.rpc("smetti_di_seguire", { p_utente_id: partecipanteId });
-        if (error) throw error;
-
-        aggiornaStatoFollow(partecipanteId, "nessuno");
-      }
-    } catch (err: any) {
-      console.error("ERRORE SEGUI:", err);
-      alert(err?.message || "Operazione non riuscita.");
-    }
-  }
-
-  function aggiornaStatoFollow(utenteId: string, nuovoStato: StatoFollow) {
-    const aggiorna = (prev: Partecipante[]) =>
-      prev.map((p) => (p.utente_id === utenteId ? { ...p, stato_follow: nuovoStato } : p));
-
-    setPartecipantiModale(aggiorna);
-    setRisultatiPersone(aggiorna);
-  }
-
-  function etichettaFollow(stato: StatoFollow) {
-    if (stato === "accettata") return "✓ Amici";
-    if (stato === "in_attesa") return "⏳ Richiesta inviata";
-    return "+ Segui";
-  }
-
-  function classeFollow(stato: StatoFollow) {
-    if (stato === "accettata")
-      return "border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600";
-    if (stato === "in_attesa")
-      return "border border-amber-200 bg-amber-50 text-amber-700 hover:border-rose-200 hover:text-rose-600";
-    return "bg-gradient-to-r from-indigo-600 to-teal-500 text-white";
-  }
-
-  async function apriRichiesteAmicizia() {
-    if (!utente) return;
-
-    setRichiesteAperte(true);
-    setCaricandoRichieste(true);
-
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc("richieste_in_attesa");
-      if (error) throw error;
-      setListaRichieste((data || []) as RichiestaAmicizia[]);
-    } catch (err) {
-      console.error("ERRORE RICHIESTE:", err);
-    } finally {
-      setCaricandoRichieste(false);
-    }
-  }
-
-  async function rispondiRichiesta(richiedenteId: string, accetta: boolean) {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc(accetta ? "accetta_richiesta" : "rifiuta_richiesta", {
-        p_richiedente_id: richiedenteId,
-      });
-      if (error) throw error;
-
-      setListaRichieste((prev) => prev.filter((r) => r.utente_id !== richiedenteId));
-      setNumeroRichieste((prev) => Math.max(0, prev - 1));
-    } catch (err: any) {
-      console.error("ERRORE RISPOSTA RICHIESTA:", err);
-      alert(err?.message || "Operazione non riuscita.");
-    }
-  }
-
-  async function cercaPersone(query: string) {
-    setQueryPersone(query);
-
-    if (query.trim().length < 2) {
-      setRisultatiPersone([]);
-      return;
-    }
-
-    setCercandoPersone(true);
-
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc("cerca_utenti", { p_query: query.trim() });
-
-      if (error) throw error;
-      setRisultatiPersone((data || []) as Partecipante[]);
-    } catch (err) {
-      console.error("ERRORE RICERCA PERSONE:", err);
-    } finally {
-      setCercandoPersone(false);
-    }
-  }
-
-  function apriRicercaPersone() {
-    if (!utente) {
-      window.location.href = "/accesso";
-      return;
-    }
-    setQueryPersone("");
-    setRisultatiPersone([]);
-    setRicercaPersoneAperta(true);
-  }
-
   async function apriPartecipanti(attivitaId: string) {
     setModaleAttivitaId(attivitaId);
     setCaricandoPartecipanti(true);
@@ -1020,31 +817,27 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Menu Mobile a tendina (se aperto) */}
+        {/* Menu Mobile a tendina (con Archivio, Ricordi e Invita amici) */}
         {menuMobileAperto && (
           <div className="border-b bg-white px-6 py-4 shadow-md md:hidden">
             <div className="flex flex-col gap-3">
-              <button
-                onClick={() => { setMenuMobileAperto(false); apriRicercaPersone(); }}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1"
+              <Link
+                href="/archivio"
+                onClick={() => setMenuMobileAperto(false)}
+                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1 hover:text-indigo-600"
               >
-                🔍 Cerca persone
-              </button>
-              <button
-                onClick={() => { setMenuMobileAperto(false); apriAmici(); }}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1"
+                📦 Archivio
+              </Link>
+              <Link
+                href="/ricordi"
+                onClick={() => setMenuMobileAperto(false)}
+                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1 hover:text-indigo-600"
               >
-                👥 Chi seguo
-              </button>
-              <button
-                onClick={() => { setMenuMobileAperto(false); apriRichiesteAmicizia(); }}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1"
-              >
-                🔔 Richieste ({numeroRichieste})
-              </button>
+                📸 Ricordi
+              </Link>
               <button
                 onClick={() => { setMenuMobileAperto(false); invitaAmici(); }}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1"
+                className="flex items-center gap-2 text-sm font-semibold text-slate-700 py-1 text-left hover:text-indigo-600"
               >
                 📤 Invita amici
               </button>
