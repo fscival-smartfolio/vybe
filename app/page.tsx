@@ -185,6 +185,7 @@ export default function Home() {
   const [risultatiPersone, setRisultatiPersone] = useState<Partecipante[]>([]);
   const [cercandoPersone, setCercandoPersone] = useState(false);
   const [amiciAperti, setAmiciAperti] = useState(false);
+  const [menuMobileAperto, setMenuMobileAperto] = useState(false);
   const [richiesteAperte, setRichiesteAperte] = useState(false);
   const [listaRichieste, setListaRichieste] = useState<RichiestaAmicizia[]>([]);
   const [caricandoRichieste, setCaricandoRichieste] = useState(false);
@@ -1020,6 +1021,42 @@ export default function Home() {
                       </span>
                     </button>
                   )}
+
+                  <div className="relative sm:hidden">
+                    <button
+                      onClick={() => setMenuMobileAperto((s) => !s)}
+                      className="rounded-full border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                      aria-label="Altre opzioni"
+                    >
+                      ☰
+                    </button>
+
+                    {menuMobileAperto && (
+                      <div
+                        className="absolute right-0 top-full z-30 mt-2 w-48 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-slate-200"
+                        onClick={() => setMenuMobileAperto(false)}
+                      >
+                        <button
+                          onClick={invitaAmici}
+                          className="block w-full px-4 py-3 text-left text-sm font-bold text-teal-700 hover:bg-slate-50"
+                        >
+                          {t("invitaAmici")}
+                        </button>
+                        <Link
+                          href="/ricordi"
+                          className="block border-t border-slate-100 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          📸 Ricordi
+                        </Link>
+                        <Link
+                          href="/archivio"
+                          className="block border-t border-slate-100 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          {t("archivio")}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     onClick={invitaAmici}
