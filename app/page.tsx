@@ -414,6 +414,19 @@ export default function Home() {
           <div className="flex items-center gap-3">
             {utente ? (
               <>
+                {/* Link visibili anche su desktop per comodità */}
+                <div className="hidden md:flex items-center gap-2 mr-2">
+                  <Link href="/archivio" className="text-xs font-semibold text-slate-600 hover:text-indigo-600 px-2 py-1">
+                    📦 Archivio
+                  </Link>
+                  <Link href="/ricordi" className="text-xs font-semibold text-slate-600 hover:text-indigo-600 px-2 py-1">
+                    📸 Ricordi
+                  </Link>
+                  <button onClick={invitaAmici} className="text-xs font-semibold text-slate-600 hover:text-indigo-600 px-2 py-1">
+                    📤 Invita
+                  </button>
+                </div>
+
                 <Link
                   href="/profilo"
                   className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300"
@@ -422,7 +435,7 @@ export default function Home() {
                   <span>{utente.nome || "Profilo"}</span>
                 </Link>
                 
-                {/* Pulsante Hamburger ☰ */}
+                {/* Pulsante Hamburger ☰ per smartphone */}
                 <button
                   onClick={() => setMenuMobileAperto(!menuMobileAperto)}
                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg text-slate-700 shadow-sm hover:bg-slate-50 md:hidden"

@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import RegistraVisita from "./components/RegistraVisita";
-import InstallPrompt from "./components/InstallPrompt";
+import RegistraVisita from "@/app/components/RegistraVisita";
+import InstallPrompt from "@/app/components/InstallPrompt";
+import { useLingua } from "@/app/components/LinguaProvider";
+import SelettoreLingua from "@/app/components/SelettoreLingua";
 import { abilitaNotifichePush, disabilitaNotifichePush, statoNotifichePush } from "@/lib/push";
-import { useLingua } from "./components/LinguaProvider";
-import SelettoreLingua from "./components/SelettoreLingua";
 
 type Profilo = {
   id: string;
