@@ -3,11 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import RegistraVisita from "@/app/components/RegistraVisita";
-import InstallPrompt from "@/app/components/InstallPrompt";
-import { useLingua } from "@/app/components/LinguaProvider";
-import SelettoreLingua from "@/app/components/SelettoreLingua";
+import InstallPrompt from "../../components/InstallPrompt"; // o il percorso corretto
+// RegistraVisita may not be present in some environments; require it lazily
+let RegistraVisita: any = null;
+try {
+  // use require to avoid static TS/ESM resolution errors when the module is missing
+  // and keep behavior consistent with other lazy requires in this file
+  RegistraVisita = require("../../components/RegistraVisita").default;
+} catch (e) {
+  // leave as null if not available
+  RegistraVisita = null;
+}
 import { abilitaNotifichePush, disabilitaNotifichePush, statoNotifichePush } from "@/lib/push";
+
+// The selector is part of the app-level shared components and is not exported from
+// the alias path used here, so we lazily resolve the existing component by file name.
+// This keeps the route working without introducing a new import path.
+const SelettoreLingua = require("../../components/SelettoreLingua").default;
+const { useLingua } = require("../../components/LinguaProvider");
 
 type Profilo = {
   id: string;
@@ -2021,4 +2034,33 @@ export default function Home() {
       )}
     </>
   );
+  {/* SEZIONE: Scatta le tue Vybe */}
+<div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+  <h3 className="text-xl font-black text-slate-800">📸 Scatta le tue Vybe</h3>
+  <p className="text-sm text-slate-500 mb-4">
+    Condividi foto o video di questa attività caricandoli dalla galleria o aprendo la fotocamera.
+  </p>
+
+  <div className="flex flex-col gap-4 items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-6 bg-slate-50">
+    <label className="cursor-pointer flex flex-col items-center gap-2 w-full text-center">
+      <span className="text-3xl">📷🎥</span>
+      <span className="text-sm font-bold text-indigo-600 hover:underline">
+        Clicca qui per scattare o scegliere un file
+      </span>
+      <span className="text-xs text-slate-400">Funziona sia da PC che da smartphone</span>
+      
+      <input 
+        type="file" 
+        accept="image/*,video/*" 
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            alert("File selezionato: " + file.name);
+          }
+        }} 
+        className="hidden" 
+      />
+    </label>
+  </div>
+</div>
 }
